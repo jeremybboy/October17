@@ -1,0 +1,297 @@
+---
+title: 'Devoir 2 : Raphaël Poix & Jeremy Uzan'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+#Modèle de translation : loi de Student
+
+L'objectif de ce devoir est d'évaluer la meilleur façon d'estimer le paramètre de translation $\theta$ d'une loi de Student translatée. Nous savons déjà que trois estimateurs tendent en probabilité vers $\theta$ :
+
+1. la moyenne empirique, estimateur obtenu par la méthode des moments.
+2. la médiane empirique, car la loi est symétrique par rapport à $\theta$.
+3. la moyenne empirique tronquée qui correspond à la moyenne empirique après suppression des observations les plus extrêmes de l'échantillon.
+  
+Nous allons utiliser la Methode Monte-Carlo vue au TP n°4.
+
+On considère la variable aléatoire $X$ définie comme : $$X=Z+\theta$$
+
+où  $\theta \in R$ est une constante et $Z$ une variable aléatoire de loi de Student  $t(q)$ à  q  degrés de liberté.
+Nous supposons que  q  est connu et le paramètre  $\theta$  est inconnu. Le but est l'estimation de  $\theta$ à partir de n copies i.i.d. $(X_1,…,X_n)$ de $X$.
+
+Rappelons qu'un critère pour évaluer la qualité d'un estimateur $\widehat{\theta}$ de $\theta$ est son risque quadratique définit par : $R(\theta,\widehat{\theta})=\mathbb{E}[ ( \widehat{\theta} - \theta)^2]$
+
+Dans notre modèle le risque quadratique de la moyenne empirique ($\widehat{\theta}=\overline{X_n}$) n'est pas explicite, car la loi de la variable aléatoire $T=(\widehat{\theta} - \theta)^2$ est difficile à déterminer. Nous choisissons alors d'analyser le comportement de $\widehat{\theta}$ sur des données simulées.
+
+Plus précisément, l'idée consiste à approcher l'espérance dans la définition du risque quadratique par une moyenne empirique en simulant un grand nombre de réalisations  $T(k)$  de la variable $T = (\widehat{\theta} - \theta)^2$.
+
+L'unique aléa dans $T$ vient de l'échantillon $(X_1,…,X_n)$, car l'estimateur $\widehat{\theta}$ est une fonction mesurable sur l'espace des observations  $(X_1,…,X_n)$. 
+On obtient une réalisation $T(k)$ de $T$ :
+
+1. en générant un échantillon $(x_1^k,...,x_n^k)$ et
+2. en évaluant cet échantillon simulé (c'est-à-dire en sortir l'estimateur et appliquer la formule pour $T$). 
+
+On répète cette démarche  K  fois pour créer un échantillon  $(T_1,…,T_K)$. 
+Ensuite, il ne reste à calculer la moyenne empirique $\overline{T_K}$ des $(T_1,…,T_K)$ qui est une approximation du risque quadratique.
+
+C'est le principe des simulations dites de Monte Carlo. Ce procédé est justifié par la loi des grands nombres, $\overline{T_k}$ tend en probablité vers $R(\widehat{\theta},\theta)$
+
+Ainsi, plus le nombre  K  de réalisations  Tk  est grand, mieux est l'approximation du risque quadratique $R(\widehat{\theta},\theta)$ par $\overline{T_K}$. On appele $\overline{T_K}$ le risque quadratique empirique
+    
+    
+```{r fonctions de base, echo = F}
+
+
+#Génère des échantillons de loi student translatée
+#n : taille d'un échantillon
+#q : degré de liberté
+#k : nombre d'échantillons souhaités
+#theta : paramètre de translation
+gen_student = function(n,q,k,theta){
+  result = c()
+  for(i in 1:k)
+    result = cbind(result,c( theta + rt(n,q)))
+  return(result)
+}
+
+#K estimations de la moyenne empirique : génération du 1er estimateur
+#n : taille de l'échantillon
+#k : nombre d'échantillons
+mean_student=function( k , echantillon ){
+  result = c()
+  for(i in 1:k){
+    result[i] = mean(echantillon[,i])
+  }
+  return(result)
+}
+
+#K estimations de la médiane empirique : génération du 2eme estimateur
+#n : taille de l'échantillon
+#k : nombre d'échantillons
+med_student=function( k , echantillon) {
+  result = c()
+  for(i in 1:k){
+    result[i] = median(sort(echantillon[,i]))
+  }
+  return(result)
+}
+
+#K estimations de la moyenne empirique tronquée : génération du 3eme estimateur
+#n : taille de l'échantillon
+#k : nombre d'échantillons
+#gamma : % à tronquer
+mean_tronc_student=function(  k , gamma , echantillon ){
+  result = c()
+  for(i in 1:k){
+    result[i] = mean(sort(echantillon[,i]),trim = gamma)
+  }
+  return(result)
+}
+
+#calcule le risque d'un estimateur 
+#hatTheta : estimateur
+#theta : paramètre à estimer
+risque=function( theta , hatTheta ){
+  return( mean( ( hatTheta - theta)^2 ) )
+}
+
+
+```
+A partir de K=100 le risque quadratique de $\overline{X_n}$ reste relativement stable. On utilisera cette valeur pour toutes les simulations suivantes, car cette valeur convient également pour les autres estimateurs. Voici les autres paramètres utilisés par défaut pour notre premier test.
+```{r param par défaut}
+  k=100        #le nombre d'échantillons générés
+  n=200        #taille de chaque échantillon
+  q=10          #degrés de liberté de la loi de Student générée
+  theta=2      #paramètre de translation de la loi
+  gamma=0.04   #proportion à retirer dans la moyenne tronquée
+```
+
+```{r autres param, echo=F}
+ color = c(2,3,4)
+myLegend = c("moyenne empirique","médiane empirique","moyenne empirique tronquée")
+```
+
+On va tout d'abord tracer les Box-plot des estimateurs, pour se faire une idée sur leur comportement.
+
+```{r boxplot, echo = F}
+
+  #génération des échantillons
+  observations = gen_student(n,q,k,theta)
+  #génération risques des estimateur
+  est_moy_emp = mean_student(k,observations)
+  est_med_emp = med_student(k,observations)
+  est_trc_emp = mean_tronc_student(k,gamma,observations)
+  
+  par(mfrow = c(1,3), mar = c(5,4,4,2)+1/2)
+  boxplot(est_moy_emp,main="estimateur moyenne \n empirique",xlab=c("risque ",risque(est_moy_emp,theta)))
+  abline(h=theta)
+  boxplot(est_med_emp,main="estimateur médiane",xlab=c("risque ",risque(est_med_emp,theta)))
+  abline(h=theta)
+  boxplot(est_trc_emp,main="estimateur moyenne \n empirique tronquée",xlab=c("risque ",risque(est_trc_emp,theta)))
+  abline(h=theta)
+  
+```
+
+On remarque tout d'abord qu'ils sont tous à peu prêt centrés en $\theta$ ce qui est bon signes pour des estimateurs de $\theta$. Mais ces boxplots ne nous permettent pas d'en dire beaucoup plus, les écarts interquartiles sont très proches, l'étendue également, ainsi que les risques empiriques calculés. Nous allons donc devoir effectuer d'autres tests pour départager nos estimateurs.
+
+```{r compare, echo = F}
+risques = function(n,q,k,theta,gamma){
+  
+  #génération des échantillons
+  observations = gen_student(n,q,k,theta)
+  #génération risques des estimateur
+  est_moy_emp = mean_student(k,observations)
+  est_med_emp = med_student(k,observations)
+  est_trc_emp = mean_tronc_student(k,gamma,observations)
+  
+  return(c( risque(est_moy_emp,theta), risque(est_med_emp,theta), risque(est_trc_emp,theta)))
+}
+```
+
+
+##Risque en fonction du degré de liberté
+
+Nous voulons tester l'efficacité des estimateurs en fonction du degrés de liberté de la loi. Pour cela nous effectuons la même opération que précédemment, en faisant varier le degrés de liberté. Nous avons décidé de séparer les petites valeurs de degrés de liberté des plus grandes, car les résultats observés sont dans les deux cas très différents.
+
+##Degrés de liberté inferieur à 5
+Nous avons obtenu les résultats suivants :
+```{r cmp q, echo=F}
+fa = function(){
+  result = c()
+  lim = 1:5
+  for(i in lim){
+    result = cbind(result , risques(n,i,k,theta,gamma))
+  }
+  plot(lim,result[1,],col=color[1],log="y",type="p",
+       ylim=c(min(result),max(result)),
+       main = "Risque quadratique empirique en fonction du degrés de liberté (<5)",
+       xlab = "degrés de liberté", ylab = "Risque quadratique empirique")
+  
+  legend("topright",col = color, legend = myLegend ,fill=color)
+  
+  points(lim,result[2,],col=color[2],type="p")
+  points(lim,result[3,],col=color[3],type="p")
+}
+fa()
+
+#var(result[1,])
+#var(result[2,])
+#var(result[3,])
+```
+
+Pour un degré de liberté égal à 1  la médiane empirique a  le plus petit risque quadratique, tandis que celui de la moyenne est 1000 fois plus grand. Il descend très vite quand q prend des valeurs plus grandes mais reste un moins bon estimateur. On peut donc déjà penser que la médiane empirique serait un meilleur estimateur pour des valeur de q petites, tandis que la moyenne empirique serait à éviter.
+
+##Degrés de liberté superieur à 5
+Nous avons obtenu les résultats suivants :
+
+```{r cmp q grand, echo=F}
+risques_q = function(q){
+  result = c()
+  lim = 5:q
+  for(i in lim){
+    result = cbind(result , risques(n,i,k,theta,gamma))
+  }
+  plot(lim,result[1,],col=color[1],log="y",type="l",
+       ylim=c(min(result),max(result)*1.6),
+       main = "Risque quadratique empirique en fonction du degrés de liberté (>5)",
+       xlab = "degrés de liberté (>5)", ylab = "Risque quadratique empirique")
+  
+  legend("topright",col = color, legend = myLegend,fill=color)
+  
+  points(lim,result[2,],col=color[2],type="l")
+  points(lim,result[3,],col=color[3],type="l")
+}
+risques_q(150)
+
+
+
+#  var(result[1,])
+#  var(result[2,])
+#  var(result[3,])
+```
+
+1. la moyenne empirique, la médiane empirique et la moyenne empirique tronquée ont des risques toujours très proche de 0 quel que soit le degré de liberté
+2. Il est remarquable que les risques quadratiques de la médiane empirique et de la moyenne empiriques tronquées sont quasiment identiques, quel que soit le degré de liberté. Leur risque est toujours légèrement en dessous de celui de la médiane.
+3. Pour autant, la variance du risque quadratique de la moyenne tronquée est bien plus grande que celle de la médiane empirique  et de moyenne empirique tronquée
+4. Etant donné le paramètre "variance faible" et "risque quadratique faible" on peut conclure ici que c'est l'estimateur avec moyenne empirique tronquée qui est la plus performante. Son risque est très petit et très stable. 
+
+##Risque en fonction de la taille n de l'échantillon
+
+Nous allons dans cette partie vérifier la qualité de nos trois estimateurs en fonction de la taille de nos échantillons. Nous calculons encore les risques quadratiques empiriques de nos estimateurs par la méthode de Monte-Carlo. On doit s'attendre à au moins observer le risque des trois estimateurs baisser lorsque la taille de nos échantillons augmente, car nous savons que leur convergence est asymptotique : autrement dit, il est prouvé mathématiquement que plus les échantillons sont grands plus les estimateurs sont précis.La taille minimale d'un échantillon est ici 10, car on ne pourrait pas dire grand chose d'échantillons de taille inférieure.
+
+```{r compare n, echo = F}
+risques_n = function(n){
+  result = c()
+  lim = 10:n
+  for(i in lim){
+    result = cbind(result , risques(i,q,k,theta,gamma))
+  }
+  
+  plot(lim,result[1,],col=color[1],log="y",type="l",
+       ylim=c(min(result),max(result)), 
+       main = "Risque empirique en fonction de la taille de l'échantillon (q=10)" ,
+       xlab = "n : taille des échantillons", ylab = "risque quadratique empirique")
+
+  legend("topright",col = color, legend = myLegend ,fill=color)
+  points(lim,result[2,],col=color[2],type="l")
+  points(lim,result[3,],col=color[3],type="l")
+}
+
+risques_n(200)
+#var(result[1,])
+#var(result[2,])
+#var(result[3,])
+```
+
+1. les risques quadratiques de chaque estimateurs ont tendance à décroître quand n grandit. Ceci est légitime : plus l'échantillon est grand, plus le risque des estimateurs s'approche de 0, car les résultats de convergences des estimateurs sont asymptotiques. On est d'autant plus centré que l'échantillon est grand.
+2. la médiane emprique a un risque le plus petit quel que soit la valeur de n. Cet estimateur est un bon candidat pour être le meilleur. 
+3. Les 3 estimateurs ont chacun des risques assez petit: on peut donc s'appuyer sur la variance des différents risques en fonction de n pour chaque estimateurs : on note que la médiane empirique et la la moyenne empirique tronquée on une variance très très petite comparée à celle de la moyenne empirique. On peut donc dire que les risques quadratiques de la moyenne empirique tronquée et celui de la médiane empirique sont stables et proches de 0, donc ce sont de bons estimateurs. Pour des valeurs de q grandes, la moyenne empirique tronquée reste le meilleur estimateur. C'est bien cohérent avec les précédents résultats.
+4. Nous avons effectué le même test en prenant $q=1$, et nous avons trouvé des résultats également similaires aux précédents : le risque décroit bien quand n augmente, et celui de la moyenne empirique est largement supérieur au risque des autres estimateurs (comme dans la section précédente). La médiane est dans ce cas un meilleur choix.
+
+
+##Risque en fonction du paramètre de translation $\theta$
+
+Pour tester maintenant l'influence du paramètre de translation nous avons toujours effectué la même méthode en faisant cette fois varier $\theta$. Nous avons décidé de tester des valeurs comprises entre 0 et 100, ainsi que des valeurs anormalement grandes, pour comparer les résultats.
+
+```{r compare theta, echo = F}
+risques_theta = function(){
+  result = c()
+  for(i in 0:100){
+    result = cbind(result , risques(n,q,k,i,gamma))
+  }
+  plot(result[1,],col=color[1],log="y",ylim=c(min(result),max(result)*1.7),type="l",
+       main ="Risque empirique en fonction du paramètre de translation (q=10)",
+       xlab = "paramètre de translation theta",
+       ylab = "risque quadratique empirique")
+  legend("topright",col =color , legend = myLegend ,fill=color)
+  
+  points(result[2,],col=color[2],type="l")
+  points(result[3,],col=color[3],type="l")
+}
+risques_theta()
+
+#var(result[1,])
+#var(result[2,])
+#var(result[3,])
+```
+
+1. La médiane empirique et la moyenne empirique tronquée ont manifestement des risques quadratiques stables et inférieurs à ceux de la moyenne empirique. De plus la variance du risque quadratique de l'estimateur de la moyenne empirique est plus grand que les autres, environ égal à 0.0002.
+2. la variance des risques quadratiques de la médiane empirique est égal à 2.3e-06 contre 2.3e-05 pour la moyenne empirique tronquée. La médiane serait l'estimateur le plus stable.
+3. Notons que la troncature a été faite à 4%. Nous avons réalisé les mêmes simulations pour 8 et 12% et les résultats sont inchangés.
+4. Contrairement à n, le paramètre de translation $\theta$ n'a pas d'impact notoir sur le risque quadratique de chacun des 3 estimateurs. 
+5. L'estimateurs par la moyenne empirique tronquée et par la médiane empirique sont tout deux très performant. 
+6. Les résultats sont bien cohérents avec les précédents, quand le degrés de liberté est grand, la moyenne tronquée semble être le meilleur estimateur. Pour des petites valeurs de q on prend plutôt la médiane (le risque de la moyenne étant 100 à 1000 fois plus élevé).
+7. Nous obtenons les mêmes résultats pour des valeurs de $\theta$ comme -4000, 5555, ...
+
+On peut donc en déduire que $\theta$ n'interfèrera pas dans le choix de notre estimateur.
+  
+##En résumé
+
+S'il est difficile de trancher entre l'estimateur de la moyenne empirique tronquée et celui de la médiane empirique, on peut conclure que l'estimateur par la moyenne empirique est manifestement moins bon que ses deux concurrents: la variance (pour différentes valeurs de n, de theta et de q) de son risque quadratique est supérieur à celle des deux autres. De plus, son risque quadratique est globalement proche de 0 certes, mais toujours au dessus des deux autres.
+
+On a également pu remarquer que la valeur de $\theta$ n'influançait pas le choix de nos estimateurs.
+
+C'est l'étude faite pour des degrés de libertés différents qui nous permet de conclure et trancher : les risques de l'estimateur de la médiane empirique sont supérieurs au risques de l'estimateur de la moyenne empirique tronquée pour des grands degrés de liberté, tandis que lorsque celui-ci vaut 1 ou 2, on prendra plutôt la médiane.
+
+L'estimateur de la moyenne empirique tronquée est donc le meilleur dans la plupart des cas, car son risque est le plus stable et très bas.
